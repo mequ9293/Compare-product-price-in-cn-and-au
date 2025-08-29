@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>海外价差一键比较 · MVP</title>
+  <style>
+  /* ===== Pastel Light Theme (A8BEDF / C7D5E8 / D8C9BA / EFE4D4) ===== */
+  :root{
+    --bg:#F6F2EC;
+    --panel:#FFFFFF;
+    --panel2:#F3F7FD;
+    --line:#D8C9BA;
+    --line2:#E6DACE;
+    --text:#2E3440;
+    --muted:#6B7280;
+    --accent:#A8BEDF;
+    --accent-2:#C7D5E8;
+    --accent-ink:#3C536D;
+    --shadow:0 8px 20px rgba(60,83,109,.12);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,Noto Sans,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";}
+  .wrap{max-width:980px;margin:0 auto;padding:24px}
+  h1{font-size:22px;margin:0 0 12px;color:var(--accent-ink)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .flex{display:flex;gap:10px;align-items:center}
+  .muted{color:var(--muted);font-size:13px}
+
+  input[type=text]{flex:1;padding:12px 14px;border-radius:12px;border:1px solid var(--line);
+                   background:#fff;color:var(--text);outline:none}
+  input[type=text]:focus, input[type=number]:focus{box-shadow:0 0 0 3px rgba(168,190,223,.25);border-color:var(--accent)}
+  input[type=number]{width:110px;padding:10px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--text)}
+
+  button{padding:11px 14px;border-radius:12px;border:1px solid var(--accent-2);
+         background:var(--accent);color:#fff;cursor:pointer;box-shadow:var(--shadow)}
+  button:hover{filter:brightness(.96)}
+  button:active{transform:translateY(1px)}
+
+  .pill{background:var(--accent-2);color:var(--accent-ink);padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid var(--line)}
+  .col{display:grid;gap:10px}
+  .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .hdr h2{margin:0;font-size:16px;color:var(--accent-ink)}
+
+  .item{background:var(--panel2);border:1px solid var(--line2);border-radius:12px;padding:12px}
+  .rowline{display:flex;gap:10px;align-items:center}
+  .thumb{width:56px;height:56px;border-radius:8px;object-fit:cover;background:var(--accent-2);flex:0 0 56px}
+  .title a{color:var(--accent-ink);text-decoration:none}
+  .title a:hover{text-decoration:underline}
+
+  .src{font-size:12px;color:var(--muted)}
+  .price{font-size:18px;font-weight:700;margin-top:4px;color:#3E4E62}
+
+  .loading{padding:12px;border:1px dashed var(--accent-2);border-radius:12px;color:var(--accent-ink);text-align:center;background:#fff}
+  footer{margin-top:18px;font-size:12px;color:var(--muted)}
+
+  @media (max-width:760px){.row{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🧭 海外价差一键比较 · MVP</h1>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="flex">
+        <input id="q" type="text" placeholder="搜索商品：Prada lip balm / 滤挂咖啡 / iPad mini…" />
+        <button id="go">搜索</button>
+        <span class="muted">汇率 CNY→AUD</span>
+        <input id="fx" type="number" value="0.21" step="0.0001" />
+        <span id="fxInfo" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <div class="hdr"><h2>🇦🇺 Australia</h2><span class="pill">AUD</span></div>
+        <div id="au" class="col"></div>
+      </div>
+      <div class="col">
+        <div class="hdr"><h2>🇨🇳 China</h2><span class="pill">CNY</span></div>
+        <div id="cn" class="col"></div>
+      </div>
+    </div>
+
+    <footer>Tip：点击标题跳转到来源；汇率框用于估算 CNY→AUD（默认实时，可手动修改）。</footer>
+  </div>
+
+  <script>
+    const elAU = document.getElementById('au');
+    const elCN = document.getElementById('cn');
+    const q = document.getElementById('q');
+    const fx = document.getElementById('fx');
+    const go = document.getElementById('go');
+    const fxInfo = document.getElementById('fxInfo');
+
+    // 记录最近一次 CN 结果，便于汇率变化时重渲染
+    let lastCN = [];
+
+    const rate = () => Number(fx.value) || 0;
+
+    function money(num, cur) {
+      if (num == null || isNaN(num)) return '—';
+      const v = Number(num);
+      if (cur === 'CNY') return `¥${v.toFixed(2)}`;
+      if (cur === 'AUD') return `$${v.toFixed(2)}`;
+      return `${cur||''} ${v.toFixed(2)}`;
+    }
+
+    function cardHtml(x, showConvToAUD=false) {
+      const img = x.thumb ? `<img class="thumb" src="${x.thumb}" alt="">` : `<div class="thumb"></div>`;
+      const p = money(x.price, x.currency);
+      const conv = showConvToAUD && x.currency === 'CNY' && x.price != null
+        ? ` · ≈ AUD ${(x.price * rate()).toFixed(2)}`
+        : '';
+      const ship = x.shipping ? ` · ${x.shipping}` : '';
+      const src = [x.source, ship].filter(Boolean).join('');
+      const link = x.url ? x.url : '#';
+      return `
+        <div class="item">
+          <div class="rowline">
+            ${img}
+            <div class="title">
+              <a href="${link}" target="_blank" rel="noopener">${x.title || ''}</a>
+              <div class="src">${src}</div>
+              <div class="price">${p}${conv}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderList(el, arr, isCN=false) {
+      if (!arr || !arr.length) {
+        el.innerHTML = `<div class="muted">暂无结果</div>`;
+        if (isCN) lastCN = [];
+        return;
+      }
+      el.innerHTML = arr.map(x => cardHtml(x, isCN)).join('');
+      if (isCN) lastCN = arr.slice(); // 记录CN数据
+    }
+
+    function setLoading() {
+      elAU.innerHTML = `<div class="loading">加载中…</div>`;
+      elCN.innerHTML = `<div class="loading">加载中…</div>`;
+    }
+
+    function showError(where, msg) {
+      const html = `<div class="item"><div class="src">❗${msg}</div></div>`;
+      (where === 'au' ? elAU : elCN).innerHTML = html;
+    }
+
+    async function search() {
+      const query = q.value.trim();
+      if (!query) return;
+
+      // 链接模式 → /fetch
+      if (/^https?:\/\//i.test(query)) {
+        elAU.innerHTML = `<div class="loading">尝试从链接读取价格…</div>`;
+        elCN.innerHTML = '';
+        try {
+          const res = await fetch(`/fetch?url=${encodeURIComponent(query)}`);
+          const payload = await res.json();
+          if (!res.ok || payload.ok === false) {
+            showError('au', (payload && payload.error) ? payload.error : `HTTP ${res.status}`);
+            return;
+          }
+          const data = payload.data;
+          if (data && data.error) {
+            showError('au', data.error);
+            return;
+          }
+          elAU.innerHTML = data && data.price !== 'N/A'
+            ? cardHtml({ title: data.title, price: data.price, currency: '', source: new URL(data.url).host, url: data.url })
+            : `<div class="muted">未能识别价格（可能需要登录/JS渲染或被禁止抓取）</div>`;
+          elCN.innerHTML = '';
+        } catch (e) {
+          showError('au', String(e));
+        }
+        return;
+      }
+
+      // 关键词模式 → /search
+      setLoading();
+      try {
+        const res = await fetch(`/search?q=${encodeURIComponent(query)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderList(elAU, data.au || [], false);
+        renderList(elCN, data.cn || [], true); // 这里会把 CN 结果存到 lastCN
+      } catch (e) {
+        showError('au', String(e));
+        showError('cn', String(e));
+      }
+    }
+
+    // —— 新增：页面加载时获取实时汇率（默认值），用户仍可手动改 ——
+    async function initFX() {
+      try {
+        const r = await fetch('/fx');
+        if (!r.ok) return;
+        const { cny_aud } = await r.json();
+        if (cny_aud) {
+          fx.value = Number(cny_aud).toFixed(4);               // ⬅ 改成4位
+          if (fxInfo) {
+            const d = new Date((typeof ts === 'number') ? ts*1000 : Date.parse(ts));
+            fxInfo.textContent = `实时 · ${isNaN(d) ? '' : d.toLocaleString()}${source ? ' · '+source : ''}`;
+          }
+          if (lastCN.length) renderList(elCN, lastCN, true); // 按新汇率重算
+        }
+      } catch { /* 静默失败，保留默认值 */ }
+    }
+    document.addEventListener('DOMContentLoaded', initFX);
+
+    // 用户修改汇率时，右侧按新汇率即时重算
+    fx.addEventListener('input', () => {
+      if (lastCN.length) renderList(elCN, lastCN, true);
+    });
+
+    go.addEventListener('click', search);
+    q.addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+  </script>
+</body>
+</html>
