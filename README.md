@@ -115,6 +115,11 @@ python main.py
 
 ---
 
+## 由Render生成的web link (不一定有效 后端非实时运行)
+https://compare-product-price-in-cn-and-au.onrender.com
+
+---
+
 ## 许可
 
 仅学习与演示用途。使用各站数据请遵守对应站点的服务条款（TOS）与法律法规。
