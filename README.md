@@ -111,7 +111,8 @@ Open打开：`http://127.0.0.1:8000/`
 ## 由Render生成的web link (不一定有效 后端非实时运行)
 https://compare-product-price-in-cn-and-au.onrender.com
 
-![UI preview](\web_example.png)
+![UI preview](./web_example.png)
+
 ---
 
 ## License 许可
